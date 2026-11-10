@@ -1,0 +1,1586 @@
+{% extends "clinica/base.html" %}
+{% block title %}Dashboard — PetCare{% endblock %}
+
+{% block content %}
+<!-- ══════════════════════════════════════════════════════════════
+     BANNER SUPERIOR SEGÚN ROL (Admin vs Recepción)
+     ══════════════════════════════════════════════════════════════ -->
+<div class="d-flex justify-content-between align-items-center mb-4 p-3 rounded-3 shadow-sm bg-white border-start border-4 border-success">
+    <div>
+        <h4 class="mb-1 text-pc fw-bold">
+            {% if user.username == 'admin' %}
+                <i class="bi bi-shield-shaded"></i> Panel Ejecutivo de Administración & Finanzas
+            {% else %}
+                <i class="bi bi-headset"></i> Módulo Operativo de Recepción & Admisión
+            {% endif %}
+        </h4>
+        <p class="text-muted small mb-0">
+            Bienvenido/a <strong>{{ user.get_full_name|default:user.username }}</strong> — 
+            {% if user.username == 'admin' %}
+                Supervisión gerencial, balance de ventas, stock de vacunas y control del equipo veterinario.
+            {% else %}
+                Control de citas del día, recepción de tutores, registro de pacientes y alertas preventivas.
+            {% endif %}
+        </p>
+    </div>
+    <div>
+        <span class="badge {% if user.username == 'admin' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %} px-3 py-2 fs-6">
+            <i class="bi bi-person-fill-lock"></i>
+            {% if user.username == 'admin' %}Administrador General{% else %}Personal de Recepción{% endif %}
+        </span>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SECCIÓN: DASHBOARD (Resumen y Métricas por Rol)
+     ══════════════════════════════════════════════════════════════ -->
+<div class="tab-section" id="section-dashboard">
+
+    {% if user.username == 'admin' %}
+    <!-- ── BLOQUE FINANCIERO Y STOCK (EXCLUSIVO ADMINISTRADOR) ── -->
+    <div class="card border-0 shadow-sm mb-4" style="background: linear-gradient(135deg, #14352a 0%, #1a7a4c 100%); color: white;">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0 text-white"><i class="bi bi-cash-coin text-warning"></i> Balance Financiero y Stock de Insumos</h5>
+                <span class="badge bg-light text-dark small">Métricas en tiempo real</span>
+            </div>
+            <div class="row g-3">
+                <!-- Total Vendido -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.12); backdrop-filter: blur(4px);">
+                        <div class="text-white-50 small text-uppercase fw-bold">Total Vendido / Facturado</div>
+                        <div class="fs-3 fw-bold text-warning mt-1">$ <span id="adm-total-ventas">0</span></div>
+                        <div class="text-white-50 small mt-1">
+                            Consultas: $<span id="adm-ventas-consultas">0</span><br>
+                            Vacunas: $<span id="adm-ventas-vacunas">0</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Vacunas que quedan (Stock) -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.12); backdrop-filter: blur(4px);">
+                        <div class="text-white-50 small text-uppercase fw-bold">Vacunas que quedan (Stock)</div>
+                        <div class="fs-3 fw-bold text-white mt-1"><span id="adm-stock-vacunas">0</span> <span class="fs-6 fw-normal">dosis</span></div>
+                        <div class="text-white-50 small mt-1">Disponibles en almacén clínico</div>
+                    </div>
+                </div>
+                <!-- Vacunas vendidas / aplicadas -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.12); backdrop-filter: blur(4px);">
+                        <div class="text-white-50 small text-uppercase fw-bold">Vacunas Vendidas / Aplicadas</div>
+                        <div class="fs-3 fw-bold text-info mt-1"><span id="adm-vacunas-aplicadas">0</span> <span class="fs-6 fw-normal">dosis</span></div>
+                        <div class="text-white-50 small mt-1">Aplicadas en pacientes</div>
+                    </div>
+                </div>
+                <!-- Alertas bajo stock -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.12); backdrop-filter: blur(4px);">
+                        <div class="text-white-50 small text-uppercase fw-bold">Alertas de Bajo Stock</div>
+                        <div class="fs-3 fw-bold text-danger mt-1"><span id="adm-bajo-stock">0</span> <span class="fs-6 fw-normal">insumos</span></div>
+                        <div class="text-white-50 small mt-1">Requieren reposición urgente</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla Detalle de Vacunas y Ventas (Admin) -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0 text-pc"><i class="bi bi-box-seam-fill"></i> Control de Stock de Vacunas y Recaudación</h5>
+            <button class="btn btn-outline-pc btn-sm" onclick="loadStats()">
+                <i class="bi bi-arrow-clockwise"></i> Actualizar
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-pc-light">
+                        <tr>
+                            <th>Nombre de Vacuna</th>
+                            <th class="text-center">Dosis en Stock (Quedan)</th>
+                            <th class="text-center">Dosis Vendidas</th>
+                            <th class="text-end">Precio por Dosis</th>
+                            <th class="text-end">Total Recaudado ($)</th>
+                            <th class="text-center">Estado de Stock</th>
+                            <th class="text-center" style="width:140px">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableInventarioVacunas">
+                        <tr><td colspan="7" class="text-center text-muted py-3">Cargando inventario…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── TARJETAS OPERATIVAS GENERALES ── -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-pc"><i class="bi bi-heart-pulse-fill"></i></div>
+                    <div>
+                        <div class="stat-number" id="st-mascotas">-</div>
+                        <div class="stat-label">Mascotas Registradas</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon" style="background:#0d6efd"><i class="bi bi-calendar-check-fill"></i></div>
+                    <div>
+                        <div class="stat-number" id="st-citas">-</div>
+                        <div class="stat-label">Citas para Hoy</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon" style="background:#6f42c1"><i class="bi bi-file-earmark-medical-fill"></i></div>
+                    <div>
+                        <div class="stat-number" id="st-fichas">-</div>
+                        <div class="stat-label">Fichas Clínicas</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="stat-icon" style="background:#dc3545"><i class="bi bi-shield-exclamation"></i></div>
+                    <div>
+                        <div class="stat-number" id="st-alertas">-</div>
+                        <div class="stat-label">Alertas de Vacunas</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accesos rápidos -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h6 class="text-muted mb-3"><i class="bi bi-lightning-fill text-warning"></i> Accesos rápidos de gestión</h6>
+            <button class="btn btn-pc btn-sm me-2 mb-2" onclick="switchTab('tutores',document.querySelector('[data-tab=tutores]'))">
+                <i class="bi bi-people-fill"></i> Tutores y Mascotas
+            </button>
+            <button class="btn btn-outline-pc btn-sm me-2 mb-2" onclick="openMascotaModal()">
+                <i class="bi bi-heart-fill"></i> + Registrar Mascota
+            </button>
+            <button class="btn btn-pc btn-sm me-2 mb-2" onclick="switchTab('veterinarios',document.querySelector('[data-tab=veterinarios]'))">
+                <i class="bi bi-person-badge-fill"></i> Veterinarios
+            </button>
+            <button class="btn btn-pc btn-sm me-2 mb-2" onclick="switchTab('citas',document.querySelector('[data-tab=citas]'))">
+                <i class="bi bi-calendar-plus"></i> Agendar Cita
+            </button>
+            <button class="btn btn-pc btn-sm me-2 mb-2" onclick="switchTab('fichas',document.querySelector('[data-tab=fichas]'))">
+                <i class="bi bi-file-earmark-plus"></i> Nueva Ficha Médica
+            </button>
+            <button class="btn btn-pc btn-sm me-2 mb-2" onclick="switchTab('vacunas',document.querySelector('[data-tab=vacunas]'))">
+                <i class="bi bi-shield-plus"></i> Vacunas y Alertas
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MÓDULO 1: TUTORES Y MASCOTAS
+     ══════════════════════════════════════════════════════════════ -->
+<div class="tab-section" id="section-tutores" style="display:none">
+    <!-- Tutores -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3 flex-wrap gap-2">
+            <h5 class="mb-0 text-pc"><i class="bi bi-people-fill"></i> Tutores (Dueños de Mascotas)</h5>
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar tutor…" id="searchTutor"
+                    oninput="loadTutores()" style="width:200px">
+                <button class="btn btn-pc btn-sm" onclick="openTutorModal()">
+                    <i class="bi bi-person-plus-fill"></i> + Nuevo Tutor
+                </button>
+                <button class="btn btn-outline-pc btn-sm" onclick="openMascotaModal()">
+                    <i class="bi bi-heart-fill"></i> + Nueva Mascota
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-pc-light">
+                        <tr>
+                            <th>Nombre Completo</th>
+                            <th>RUT/DNI</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Mascotas</th>
+                            <th style="width:110px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableTutores">
+                        <tr><td colspan="6" class="text-center text-muted py-4">Cargando tutores…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mascotas del tutor seleccionado -->
+    <div class="card border-0 shadow-sm" id="panelMascotas" style="display:none">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0 text-pc"><i class="bi bi-heart-fill"></i> Mascotas asociadas a <span id="tutorSelName">—</span></h5>
+            <button class="btn btn-pc btn-sm" onclick="openMascotaModal(null, selectedTutorId)">
+                <i class="bi bi-plus-lg"></i> Agregar mascota a este tutor
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-pc-light">
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Especie</th>
+                            <th>Raza</th>
+                            <th>Sexo</th>
+                            <th>Peso</th>
+                            <th>Nacimiento</th>
+                            <th style="width:110px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableMascotas"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MÓDULO: VETERINARIOS (Gestión de Profesionales)
+     ══════════════════════════════════════════════════════════════ -->
+<div class="tab-section" id="section-veterinarios" style="display:none">
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3 flex-wrap gap-2">
+            <h5 class="mb-0 text-pc"><i class="bi bi-person-badge-fill"></i> Equipo Médico Veterinario</h5>
+            <button class="btn btn-pc btn-sm" onclick="openVeterinarioModal()">
+                <i class="bi bi-person-plus-fill"></i> + Nuevo Veterinario
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-pc-light">
+                        <tr>
+                            <th>Nombre del Profesional</th>
+                            <th>Especialidad</th>
+                            <th>Teléfono</th>
+                            <th>Correo Electrónico</th>
+                            <th>Jornada Laboral</th>
+                            <th>Estado</th>
+                            <th style="width:110px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableVeterinarios">
+                        <tr><td colspan="7" class="text-center text-muted py-4">Cargando veterinarios…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MÓDULO 2: CALENDARIO Y AGENDAMIENTO
+     ══════════════════════════════════════════════════════════════ -->
+<div class="tab-section" id="section-citas" style="display:none">
+    <div class="row g-3 mb-4">
+        <!-- Disponibilidad -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-pc"><i class="bi bi-calendar3"></i> Disponibilidad Horaria</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-7">
+                            <label class="form-label small fw-semibold">Veterinario</label>
+                            <select class="form-select form-select-sm" id="selVetDisp"></select>
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label small fw-semibold">Fecha</label>
+                            <input type="date" class="form-control form-control-sm" id="fechaDisp">
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-pc btn-sm w-100 mb-3" onclick="checkDisponibilidad()">
+                        <i class="bi bi-search"></i> Consultar Disponibilidad
+                    </button>
+                    <div id="gridDisponibilidad">
+                        <p class="text-muted text-center small">Seleccione un veterinario y fecha para ver los bloques libres</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Formulario nueva cita -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-pc"><i class="bi bi-calendar-plus"></i> Agendar Cita Médica</h5>
+                </div>
+                <div class="card-body">
+                    <div id="alertCita"></div>
+                    <form id="formCita" onsubmit="return saveCita(event)">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">Mascota (Paciente)</label>
+                                <select class="form-select form-select-sm" id="citaMascota" required></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">Veterinario</label>
+                                <select class="form-select form-select-sm" id="citaVet" required></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Fecha</label>
+                                <input type="date" class="form-control form-control-sm" id="citaFecha" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Hora Inicio</label>
+                                <input type="time" class="form-control form-control-sm" id="citaHoraInicio" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Hora Fin</label>
+                                <input type="time" class="form-control form-control-sm" id="citaHoraFin" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-semibold">Motivo de la consulta</label>
+                                <textarea class="form-control form-control-sm" id="citaMotivo" rows="2" placeholder="Describa el motivo o síntomas..."></textarea>
+                            </div>
+                        </div>
+                        <input type="hidden" id="citaId" value="">
+                        <button type="submit" class="btn btn-pc btn-sm mt-3 w-100">
+                            <i class="bi bi-check-lg"></i> Confirmar y Agendar Cita
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Listado de citas -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0 text-pc"><i class="bi bi-list-check"></i> Citas Registradas</h5>
+            <select class="form-select form-select-sm" id="filtroCitaEstado" onchange="loadCitas()" style="width:160px">
+                <option value="">Todos los estados</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Confirmada">Confirmada</option>
+                <option value="Atendida">Atendida</option>
+                <option value="Cancelada">Cancelada</option>
+            </select>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-pc-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Horario</th>
+                            <th>Mascota</th>
+                            <th>Tutor</th>
+                            <th>Veterinario</th>
+                            <th>Motivo</th>
+                            <th>Estado</th>
+                            <th style="width:140px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableCitas">
+                        <tr><td colspan="8" class="text-center text-muted py-4">Cargando citas…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MÓDULO 3: FICHA CLÍNICA DIGITAL
+     ══════════════════════════════════════════════════════════════ -->
+<div class="tab-section" id="section-fichas" style="display:none">
+    <div class="row g-3">
+        <!-- Buscador de mascota -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-pc"><i class="bi bi-search"></i> Buscar Paciente</h5>
+                </div>
+                <div class="card-body">
+                    <input type="text" class="form-control form-control-sm mb-3" placeholder="Nombre de mascota…"
+                        id="searchMascotaFicha" oninput="buscarMascotaFicha()">
+                    <div id="listaMascotasFicha" class="list-group list-group-flush" style="max-height:400px;overflow-y:auto"></div>
+                </div>
+            </div>
+        </div>
+        <!-- Historial -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h5 class="mb-0 text-pc"><i class="bi bi-file-earmark-medical-fill"></i> Expediente Médico Completo</h5>
+                    <button class="btn btn-pc btn-sm" id="btnNuevaFicha" style="display:none" onclick="openFichaModal()">
+                        <i class="bi bi-plus-lg"></i> + Nueva Atención Clínica
+                    </button>
+                </div>
+                <div class="card-body" id="panelHistorial">
+                    <p class="text-muted text-center py-4">Seleccione un paciente de la lista para ver su expediente histórico</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MÓDULO 4: RECORDATORIOS DE VACUNACIÓN Y CONTROLES
+     ══════════════════════════════════════════════════════════════ -->
+<div class="tab-section" id="section-vacunas" style="display:none">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3 flex-wrap gap-2">
+            <h5 class="mb-0 text-pc"><i class="bi bi-shield-plus-fill"></i> Recordatorios de Vacunación y Controles</h5>
+            <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" id="filtroVacEstado" onchange="loadRecordatorios()" style="width:170px">
+                    <option value="">Todos</option>
+                    <option value="alertas" selected>⚠ Alertas activas</option>
+                    <option value="Aplicada">✓ Aplicadas</option>
+                </select>
+                <button class="btn btn-pc btn-sm" onclick="openRecordatorioModal()">
+                    <i class="bi bi-plus-lg"></i> + Nuevo Control
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div id="resumenAlertas" class="px-3 py-2 bg-pc-light d-flex gap-3 flex-wrap" style="display:none!important"></div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-pc-light">
+                        <tr>
+                            <th style="width:30px"></th>
+                            <th>Vacuna / Control</th>
+                            <th>Tipo</th>
+                            <th>Mascota</th>
+                            <th>Fecha Programada</th>
+                            <th>Fecha Aplicación</th>
+                            <th>Estado</th>
+                            <th style="width:130px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableVacunas">
+                        <tr><td colspan="8" class="text-center text-muted py-4">Cargando recordatorios…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODALES
+     ══════════════════════════════════════════════════════════════ -->
+
+<!-- Modal Tutor -->
+<div class="modal fade" id="modalTutor" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="formTutor" onsubmit="return saveTutor(event)">
+                <div class="modal-header bg-pc text-white">
+                    <h5 class="modal-title" id="modalTutorTitle">Nuevo Tutor</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="tutorId">
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Nombre Completo</label>
+                        <input type="text" class="form-control form-control-sm" id="tutorNombre" required placeholder="Nombre y Apellidos">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">RUT / DNI</label>
+                        <input type="text" class="form-control form-control-sm" id="tutorRut" required placeholder="12.345.678-9">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Teléfono</label>
+                        <input type="text" class="form-control form-control-sm" id="tutorTelefono" placeholder="+56 9 1234 5678">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Email</label>
+                        <input type="email" class="form-control form-control-sm" id="tutorEmail" placeholder="tutor@correo.cl">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Dirección</label>
+                        <input type="text" class="form-control form-control-sm" id="tutorDireccion" placeholder="Calle, Número, Comuna">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-pc">Guardar Tutor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Mascota (con selector de tutor) -->
+<div class="modal fade" id="modalMascota" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="formMascota" onsubmit="return saveMascota(event)">
+                <div class="modal-header bg-pc text-white">
+                    <h5 class="modal-title" id="modalMascotaTitle">Nueva Mascota</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="mascotaId">
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Tutor / Dueño de la Mascota</label>
+                        <select class="form-select form-select-sm" id="mascotaTutor" required>
+                            <option value="">— Seleccione un Tutor —</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Nombre de la Mascota</label>
+                        <input type="text" class="form-control form-control-sm" id="mascotaNombre" required placeholder="Ej. Firulais, Michi, etc.">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6 mb-2">
+                            <label class="form-label small fw-semibold">Especie</label>
+                            <select class="form-select form-select-sm" id="mascotaEspecie">
+                                <option value="Perro">Perro</option>
+                                <option value="Gato">Gato</option>
+                                <option value="Exótico">Exótico</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <label class="form-label small fw-semibold">Raza</label>
+                            <input type="text" class="form-control form-control-sm" id="mascotaRaza" placeholder="Ej. Labrador, Mestizo">
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4 mb-2">
+                            <label class="form-label small fw-semibold">Sexo</label>
+                            <select class="form-select form-select-sm" id="mascotaSexo">
+                                <option value="M">Macho</option>
+                                <option value="H">Hembra</option>
+                            </select>
+                        </div>
+                        <div class="col-4 mb-2">
+                            <label class="form-label small fw-semibold">Peso (kg)</label>
+                            <input type="number" step="0.1" class="form-control form-control-sm" id="mascotaPeso" placeholder="Ej. 12.5">
+                        </div>
+                        <div class="col-4 mb-2">
+                            <label class="form-label small fw-semibold">Nacimiento</label>
+                            <input type="date" class="form-control form-control-sm" id="mascotaNacimiento">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Observaciones / Alergias</label>
+                        <textarea class="form-control form-control-sm" id="mascotaObs" rows="2" placeholder="Antecedentes médicos, alergias, etc."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-pc">Guardar Mascota</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Veterinario -->
+<div class="modal fade" id="modalVeterinario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="formVeterinario" onsubmit="return saveVeterinario(event)">
+                <div class="modal-header bg-pc text-white">
+                    <h5 class="modal-title" id="modalVetTitle">Nuevo Veterinario</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="vetId">
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Nombre Completo</label>
+                        <input type="text" class="form-control form-control-sm" id="vetNombre" required placeholder="Dr(a). Nombre y Apellido">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Especialidad</label>
+                        <input type="text" class="form-control form-control-sm" id="vetEspecialidad" placeholder="Ej. Medicina General, Cirugía, Dermatología">
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold">Teléfono</label>
+                            <input type="text" class="form-control form-control-sm" id="vetTelefono" placeholder="+56 9 8765 4321">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold">Email</label>
+                            <input type="email" class="form-control form-control-sm" id="vetEmail" placeholder="veterinario@petcare.cl">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold">Inicio de Jornada</label>
+                            <input type="time" class="form-control form-control-sm" id="vetHoraInicio" value="08:00">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold">Fin de Jornada</label>
+                            <input type="time" class="form-control form-control-sm" id="vetHoraFin" value="18:00">
+                        </div>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="vetActivo" checked>
+                        <label class="form-check-label small" for="vetActivo">Veterinario Activo para Agendamiento</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-pc">Guardar Profesional</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ficha Clínica -->
+<div class="modal fade" id="modalFicha" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="formFicha" onsubmit="return saveFicha(event)">
+                <div class="modal-header bg-pc text-white">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-medical"></i> Nueva Atención Clínica</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label small fw-semibold">Mascota (Paciente)</label>
+                            <select class="form-select form-select-sm" id="fichaMascota" required></select>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label small fw-semibold">Veterinario Tratante</label>
+                            <select class="form-select form-select-sm" id="fichaVet" required></select>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Anamnesis</label>
+                        <textarea class="form-control form-control-sm" id="fichaAnamnesis" rows="2" placeholder="Antecedentes y síntomas reportados por el tutor..."></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Diagnóstico</label>
+                        <textarea class="form-control form-control-sm" id="fichaDiagnostico" rows="2" placeholder="Diagnóstico presuntivo o definitivo..."></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Tratamiento e Indicaciones</label>
+                        <textarea class="form-control form-control-sm" id="fichaTratamiento" rows="2" placeholder="Procedimientos realizados, curaciones, indicaciones..."></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Receta Médica</label>
+                        <textarea class="form-control form-control-sm" id="fichaReceta" rows="2" placeholder="Fármaco, posología y duración del tratamiento..."></textarea>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label small fw-semibold">Exámenes Solicitados</label>
+                            <textarea class="form-control form-control-sm" id="fichaExamSol" rows="2" placeholder="Hemograma, ecografía, biopsia, etc."></textarea>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label small fw-semibold">Resultados de Exámenes</label>
+                            <textarea class="form-control form-control-sm" id="fichaExamRes" rows="2" placeholder="Resultados analíticos o informe radiológico..."></textarea>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label small fw-semibold">Costo de Atención ($ CLP)</label>
+                            <input type="number" class="form-control form-control-sm" id="fichaCosto" value="25000" min="0" step="1000">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-pc">Guardar Ficha Médica</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Recordatorio -->
+<div class="modal fade" id="modalRecordatorio" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="formRecordatorio" onsubmit="return saveRecordatorio(event)">
+                <div class="modal-header bg-pc text-white">
+                    <h5 class="modal-title"><i class="bi bi-shield-plus"></i> Nuevo Recordatorio de Vacuna / Control</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Mascota</label>
+                        <select class="form-select form-select-sm" id="recMascota" required></select>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6 mb-2">
+                            <label class="form-label small fw-semibold">Tipo</label>
+                            <select class="form-select form-select-sm" id="recTipo">
+                                <option value="Vacuna">Vacuna</option>
+                                <option value="Control Periódico">Control Periódico</option>
+                            </select>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <label class="form-label small fw-semibold">Fecha Programada</label>
+                            <input type="date" class="form-control form-control-sm" id="recFecha" required>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Nombre de Vacuna / Control</label>
+                        <input type="text" class="form-control form-control-sm" id="recNombre" required placeholder="Ej. Antirrábica, Séxtuple, Control Dental">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Notas</label>
+                        <textarea class="form-control form-control-sm" id="recNotas" rows="2" placeholder="Observaciones o indicaciones previas"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-pc">Guardar Recordatorio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Confirmar Eliminación -->
+<div class="modal fade" id="modalConfirm" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white py-2">
+                <h6 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Confirmar</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center" id="confirmBody">¿Está seguro?</div>
+            <div class="modal-footer justify-content-center">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-sm btn-danger" id="btnConfirmOk">Eliminar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ═══════════════════════════════════════════════════════════════════
+    //  CONFIGURACIÓN Y HELPERS
+    // ═══════════════════════════════════════════════════════════════════
+    const API = '/api';
+
+    function getCookie(name) {
+        let v = null;
+        document.cookie.split(';').forEach(c => {
+            c = c.trim();
+            if (c.startsWith(name + '=')) v = decodeURIComponent(c.substring(name.length + 1));
+        });
+        return v;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    async function apiFetch(url, opts = {}) {
+        const defaults = {
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            credentials: 'same-origin',
+        };
+        const res = await fetch(url, { ...defaults, ...opts, headers: { ...defaults.headers, ...(opts.headers || {}) } });
+        if (res.status === 204) return null;
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw { status: res.status, data };
+        return data;
+    }
+
+    function toast(msg, type = 'success') {
+        const icon = type === 'success' ? 'check-circle-fill' : type === 'danger' ? 'exclamation-triangle-fill' : 'info-circle-fill';
+        const html = `<div class="toast align-items-center text-bg-${type} border-0 show" role="alert">
+            <div class="d-flex"><div class="toast-body"><i class="bi bi-${icon} me-1"></i> ${msg}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+        const container = document.getElementById('toastContainer');
+        container.insertAdjacentHTML('beforeend', html);
+        const el = container.lastElementChild;
+        setTimeout(() => el.remove(), 4000);
+    }
+
+    function formatCLP(val) {
+        return new Intl.NumberFormat('es-CL').format(Math.round(val || 0));
+    }
+
+    function formatDate(d) {
+        if (!d) return '—';
+        if (d instanceof Date) {
+            if (isNaN(d.getTime())) return '—';
+            const dia = String(d.getDate()).padStart(2, '0');
+            const mes = String(d.getMonth() + 1).padStart(2, '0');
+            const anio = d.getFullYear();
+            return `${dia}/${mes}/${anio}`;
+        }
+        const s = String(d).trim();
+        if (!s || s === 'null' || s === 'undefined') return '—';
+
+        const fechaSolo = s.split('T')[0].split(' ')[0].trim();
+
+        if (fechaSolo.includes('/')) {
+            const p = fechaSolo.split('/');
+            if (p.length === 3) {
+                if (p[0].length === 4) {
+                    return `${p[2].padStart(2, '0')}/${p[1].padStart(2, '0')}/${p[0]}`;
+                }
+                return `${p[0].padStart(2, '0')}/${p[1].padStart(2, '0')}/${p[2]}`;
+            }
+            return fechaSolo;
+        }
+
+        if (fechaSolo.includes('-')) {
+            const p = fechaSolo.split('-');
+            if (p.length === 3) {
+                if (p[0].length === 4) {
+                    return `${p[2].padStart(2, '0')}/${p[1].padStart(2, '0')}/${p[0]}`;
+                }
+                return `${p[0].padStart(2, '0')}/${p[1].padStart(2, '0')}/${p[2]}`;
+            }
+            return fechaSolo;
+        }
+
+        return fechaSolo || '—';
+    }
+
+    function estadoBadge(estado) {
+        const map = {
+            'Pendiente': 'badge-pendiente', 'Confirmada': 'badge-confirmada',
+            'Atendida': 'badge-atendida', 'Cancelada': 'badge-cancelada'
+        };
+        return `<span class="badge ${map[estado] || 'bg-secondary'}">${estado}</span>`;
+    }
+
+    function confirm(msg, onOk) {
+        document.getElementById('confirmBody').textContent = msg;
+        const btn = document.getElementById('btnConfirmOk');
+        const modal = new bootstrap.Modal(document.getElementById('modalConfirm'));
+        const handler = () => { onOk(); modal.hide(); btn.removeEventListener('click', handler); };
+        btn.onclick = handler;
+        modal.show();
+    }
+
+    // Caches globales
+    let allVets = [], allMascotas = [], allTutores = [];
+    let selectedTutorId = null, selectedMascotaFichaId = null;
+
+    async function loadDropdowns() {
+        try {
+            const [vRes, mRes, tRes] = await Promise.all([
+                apiFetch(API + '/veterinarios/?page_size=100'),
+                apiFetch(API + '/mascotas/?page_size=200'),
+                apiFetch(API + '/tutores/?page_size=200'),
+            ]);
+            allVets = vRes.results || vRes;
+            allMascotas = mRes.results || mRes;
+            allTutores = tRes.results || tRes;
+        } catch (e) { console.error('Error cargando listas:', e); }
+
+        // Poblar selects de veterinarios
+        const vetHtml = '<option value="">— Seleccione un Veterinario —</option>' +
+            allVets.filter(v => v.activo).map(v => `<option value="${v.id}">Dr(a). ${v.nombre_completo} (${v.especialidad || 'General'})</option>`).join('');
+        document.querySelectorAll('#selVetDisp, #citaVet, #fichaVet').forEach(s => s.innerHTML = vetHtml);
+
+        // Poblar selects de mascotas
+        const mascHtml = '<option value="">— Seleccione una Mascota —</option>' +
+            allMascotas.map(m => `<option value="${m.id}">${m.nombre} (${m.especie}) — Tutor: ${m.tutor_nombre}</option>`).join('');
+        document.querySelectorAll('#citaMascota, #fichaMascota, #recMascota').forEach(s => s.innerHTML = mascHtml);
+
+        // Poblar select de tutores en modal de mascotas
+        const tutorHtml = '<option value="">— Seleccione el Tutor / Dueño —</option>' +
+            allTutores.map(t => `<option value="${t.id}">${t.nombre_completo} (${t.rut_dni})</option>`).join('');
+        const sTutor = document.getElementById('mascotaTutor');
+        if (sTutor) sTutor.innerHTML = tutorHtml;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  DASHBOARD STATS (Admin y Recepción)
+    // ═══════════════════════════════════════════════════════════════════
+    async function loadStats() {
+        try {
+            const d = await apiFetch(API + '/stats/');
+
+            // Métricas operativas
+            const stMasc = document.getElementById('st-mascotas');
+            if (stMasc) stMasc.textContent = d.total_mascotas;
+            const stCit = document.getElementById('st-citas');
+            if (stCit) stCit.textContent = d.citas_hoy;
+            const stFich = document.getElementById('st-fichas');
+            if (stFich) stFich.textContent = d.fichas_registradas;
+            const stAlrt = document.getElementById('st-alertas');
+            if (stAlrt) stAlrt.textContent = d.alertas_vacunas;
+
+            // Métricas exclusivas Administrador
+            const admTotalVentas = document.getElementById('adm-total-ventas');
+            if (admTotalVentas) admTotalVentas.textContent = formatCLP(d.ventas_totales);
+            const admVentasConsultas = document.getElementById('adm-ventas-consultas');
+            if (admVentasConsultas) admVentasConsultas.textContent = formatCLP(d.ventas_consultas);
+            const admVentasVacunas = document.getElementById('adm-ventas-vacunas');
+            if (admVentasVacunas) admVentasVacunas.textContent = formatCLP(d.ventas_vacunas);
+
+            const admStockVacunas = document.getElementById('adm-stock-vacunas');
+            if (admStockVacunas) admStockVacunas.textContent = d.vacunas_stock_total;
+            const admVacunasAplicadas = document.getElementById('adm-vacunas-aplicadas');
+            if (admVacunasAplicadas) admVacunasAplicadas.textContent = d.vacunas_aplicadas_total;
+            const admBajoStock = document.getElementById('adm-bajo-stock');
+            if (admBajoStock) admBajoStock.textContent = d.vacunas_bajo_stock;
+
+            // Renderizar inventario de vacunas (Admin)
+            const tableInv = document.getElementById('tableInventarioVacunas');
+            if (tableInv && d.inventario_vacunas) {
+                if (d.inventario_vacunas.length === 0) {
+                    tableInv.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Sin vacunas en inventario</td></tr>';
+                } else {
+                    tableInv.innerHTML = d.inventario_vacunas.map(v => {
+                        const badgeStock = v.bajo_stock
+                            ? '<span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill"></i> Bajo Stock</span>'
+                            : '<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Normal</span>';
+                        return `
+                            <tr>
+                                <td class="fw-semibold">${v.nombre}</td>
+                                <td class="text-center">
+                                    <span class="badge ${v.dosis_disponibles <= v.stock_minimo ? 'bg-danger' : 'bg-primary'} fs-6">
+                                        ${v.dosis_disponibles} dosis
+                                    </span>
+                                </td>
+                                <td class="text-center">${v.dosis_aplicadas} dosis</td>
+                                <td class="text-end">$${formatCLP(v.precio_unitario)}</td>
+                                <td class="text-end fw-bold text-success">$${formatCLP(v.total_vendido)}</td>
+                                <td class="text-center">${badgeStock}</td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-success" onclick="promptReabastecer(${v.id}, '${v.nombre.replace(/'/g, "\\'")}')" title="Añadir stock">
+                                        <i class="bi bi-plus-circle"></i> + Stock
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+        } catch (e) { console.error('Error stats:', e); }
+    }
+
+    async function promptReabastecer(id, nombre) {
+        const cantStr = prompt(`Ingrese la cantidad de dosis que desea agregar al stock de "${nombre}":`, "10");
+        if (cantStr === null) return;
+        const cant = parseInt(cantStr);
+        if (isNaN(cant) || cant <= 0) {
+            toast('Debe ingresar un número entero positivo', 'warning');
+            return;
+        }
+        try {
+            const res = await apiFetch(API + `/inventario-vacunas/${id}/reabastecer/`, {
+                method: 'POST',
+                body: JSON.stringify({ cantidad: cant })
+            });
+            toast(res.mensaje || `Stock de ${nombre} actualizado`);
+            loadStats();
+        } catch (e) { toast('Error al reabastecer stock', 'danger'); }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  MÓDULO: VETERINARIOS (CRUD Completo)
+    // ═══════════════════════════════════════════════════════════════════
+    async function loadVeterinarios() {
+        try {
+            const data = await apiFetch(API + '/veterinarios/?page_size=100');
+            allVets = data.results || data;
+            const tbody = document.getElementById('tableVeterinarios');
+            if (!tbody) return;
+            if (allVets.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Sin veterinarios registrados</td></tr>';
+                return;
+            }
+            tbody.innerHTML = allVets.map(v => `
+                <tr>
+                    <td class="fw-semibold">Dr(a). ${v.nombre_completo}</td>
+                    <td><span class="badge bg-light text-dark border">${v.especialidad || 'Medicina General'}</span></td>
+                    <td>${v.telefono || '—'}</td>
+                    <td>${v.email || '—'}</td>
+                    <td><i class="bi bi-clock me-1 text-muted"></i>${(v.horario_inicio||'').slice(0,5)} — ${(v.horario_fin||'').slice(0,5)}</td>
+                    <td><span class="badge ${v.activo ? 'bg-success' : 'bg-secondary'}">${v.activo ? 'Activo' : 'Inactivo'}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary me-1" title="Editar" onclick="openVeterinarioModal(${v.id})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" title="Eliminar" onclick="deleteVeterinario(${v.id}, '${v.nombre_completo.replace(/'/g, "\\'")}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (e) { console.error('Error veterinarios:', e); }
+    }
+
+    async function openVeterinarioModal(id = null) {
+        document.getElementById('formVeterinario').reset();
+        document.getElementById('vetId').value = '';
+        document.getElementById('modalVetTitle').textContent = id ? 'Editar Veterinario' : 'Nuevo Veterinario';
+        if (id) {
+            const v = allVets.find(x => x.id === id) || await apiFetch(API + `/veterinarios/${id}/`);
+            document.getElementById('vetId').value = v.id;
+            document.getElementById('vetNombre').value = v.nombre_completo;
+            document.getElementById('vetEspecialidad').value = v.especialidad || '';
+            document.getElementById('vetTelefono').value = v.telefono || '';
+            document.getElementById('vetEmail').value = v.email || '';
+            document.getElementById('vetHoraInicio').value = (v.horario_inicio || '08:00').slice(0, 5);
+            document.getElementById('vetHoraFin').value = (v.horario_fin || '18:00').slice(0, 5);
+            document.getElementById('vetActivo').checked = !!v.activo;
+        }
+        new bootstrap.Modal(document.getElementById('modalVeterinario')).show();
+    }
+
+    async function saveVeterinario(e) {
+        e.preventDefault();
+        const id = document.getElementById('vetId').value;
+        const body = {
+            nombre_completo: document.getElementById('vetNombre').value,
+            especialidad: document.getElementById('vetEspecialidad').value,
+            telefono: document.getElementById('vetTelefono').value,
+            email: document.getElementById('vetEmail').value,
+            horario_inicio: document.getElementById('vetHoraInicio').value,
+            horario_fin: document.getElementById('vetHoraFin').value,
+            activo: document.getElementById('vetActivo').checked,
+        };
+        try {
+            if (id) await apiFetch(API + `/veterinarios/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+            else await apiFetch(API + '/veterinarios/', { method: 'POST', body: JSON.stringify(body) });
+            bootstrap.Modal.getInstance(document.getElementById('modalVeterinario')).hide();
+            toast(id ? 'Veterinario actualizado' : 'Nuevo profesional agregado al equipo');
+            loadVeterinarios(); loadDropdowns(); loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('. ') : 'Error al guardar';
+            toast(msgs, 'danger');
+        }
+        return false;
+    }
+
+    function deleteVeterinario(id, name) {
+        confirm(`¿Eliminar al Dr(a). "${name}" del equipo médico?`, async () => {
+            try {
+                await apiFetch(API + `/veterinarios/${id}/`, { method: 'DELETE' });
+                toast('Veterinario eliminado');
+                loadVeterinarios(); loadDropdowns(); loadStats();
+            } catch (e) { toast('Error al eliminar', 'danger'); }
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  MÓDULO 1: TUTORES Y MASCOTAS
+    // ═══════════════════════════════════════════════════════════════════
+    async function loadTutores() {
+        const q = document.getElementById('searchTutor').value;
+        try {
+            const data = await apiFetch(API + `/tutores/?search=${encodeURIComponent(q)}&page_size=100`);
+            allTutores = data.results || data;
+            const tbody = document.getElementById('tableTutores');
+            if (allTutores.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Sin resultados</td></tr>';
+                return;
+            }
+            tbody.innerHTML = allTutores.map(t => `
+                <tr onclick="selectTutor(${t.id}, '${t.nombre_completo.replace(/'/g, "\\'")}')">
+                    <td class="fw-semibold">${t.nombre_completo}</td>
+                    <td><code>${t.rut_dni}</code></td>
+                    <td>${t.telefono || '—'}</td>
+                    <td>${t.email || '—'}</td>
+                    <td><span class="badge bg-pc">${t.cantidad_mascotas}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary me-1" title="Editar"
+                            onclick="event.stopPropagation();openTutorModal(${t.id})"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" title="Eliminar"
+                            onclick="event.stopPropagation();deleteTutor(${t.id},'${t.nombre_completo.replace(/'/g, "\\'")}')"><i class="bi bi-trash"></i></button>
+                    </td>
+                </tr>`).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    function selectTutor(id, name) {
+        selectedTutorId = id;
+        document.getElementById('tutorSelName').textContent = name;
+        document.getElementById('panelMascotas').style.display = '';
+        loadMascotasByTutor(id);
+    }
+
+    async function openTutorModal(id = null) {
+        document.getElementById('formTutor').reset();
+        document.getElementById('tutorId').value = '';
+        document.getElementById('modalTutorTitle').textContent = id ? 'Editar Tutor' : 'Nuevo Tutor';
+        if (id) {
+            const t = await apiFetch(API + `/tutores/${id}/`);
+            document.getElementById('tutorId').value = t.id;
+            document.getElementById('tutorNombre').value = t.nombre_completo;
+            document.getElementById('tutorRut').value = t.rut_dni;
+            document.getElementById('tutorTelefono').value = t.telefono;
+            document.getElementById('tutorEmail').value = t.email;
+            document.getElementById('tutorDireccion').value = t.direccion;
+        }
+        new bootstrap.Modal(document.getElementById('modalTutor')).show();
+    }
+
+    async function saveTutor(e) {
+        e.preventDefault();
+        const id = document.getElementById('tutorId').value;
+        const body = {
+            nombre_completo: document.getElementById('tutorNombre').value,
+            rut_dni: document.getElementById('tutorRut').value,
+            telefono: document.getElementById('tutorTelefono').value,
+            email: document.getElementById('tutorEmail').value,
+            direccion: document.getElementById('tutorDireccion').value,
+        };
+        try {
+            if (id) await apiFetch(API + `/tutores/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+            else await apiFetch(API + '/tutores/', { method: 'POST', body: JSON.stringify(body) });
+            bootstrap.Modal.getInstance(document.getElementById('modalTutor')).hide();
+            toast(id ? 'Tutor actualizado' : 'Nuevo tutor registrado con éxito');
+            loadTutores(); loadDropdowns(); loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('. ') : 'Error al guardar';
+            toast(msgs, 'danger');
+        }
+        return false;
+    }
+
+    function deleteTutor(id, name) {
+        confirm(`¿Eliminar al tutor "${name}" y todas sus mascotas?`, async () => {
+            try {
+                await apiFetch(API + `/tutores/${id}/`, { method: 'DELETE' });
+                toast('Tutor eliminado');
+                document.getElementById('panelMascotas').style.display = 'none';
+                loadTutores(); loadDropdowns(); loadStats();
+            } catch (e) { toast('Error al eliminar', 'danger'); }
+        });
+    }
+
+    // ── Mascotas ─────────────────────────────────────
+    async function loadMascotasByTutor(tutorId) {
+        try {
+            const data = await apiFetch(API + `/mascotas/?tutor=${tutorId}&page_size=50`);
+            const mascotas = data.results || data;
+            const tbody = document.getElementById('tableMascotas');
+            if (mascotas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Sin mascotas registradas para este tutor</td></tr>';
+                return;
+            }
+            tbody.innerHTML = mascotas.map(m => `<tr>
+                <td class="fw-semibold">${m.nombre}</td>
+                <td>${m.especie}</td><td>${m.raza || '—'}</td>
+                <td>${m.sexo === 'M' ? 'Macho' : 'Hembra'}</td>
+                <td>${m.peso ? m.peso + ' kg' : '—'}</td>
+                <td>${formatDate(m.fecha_nacimiento)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="openMascotaModal(${m.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteMascota(${m.id},'${m.nombre.replace(/'/g, "\\'")}')"><i class="bi bi-trash"></i></button>
+                </td></tr>`).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    function openMascotaModal(id = null, defaultTutorId = null) {
+        document.getElementById('formMascota').reset();
+        document.getElementById('mascotaId').value = '';
+        document.getElementById('modalMascotaTitle').textContent = id ? 'Editar Mascota' : 'Nueva Mascota';
+
+        // Preseleccionar tutor si existe
+        const targetTutor = defaultTutorId || selectedTutorId;
+        const selTutor = document.getElementById('mascotaTutor');
+        if (selTutor && targetTutor) selTutor.value = targetTutor;
+
+        if (id) {
+            const m = allMascotas.find(x => x.id === id);
+            if (m) {
+                document.getElementById('mascotaId').value = m.id;
+                if (selTutor) selTutor.value = m.tutor;
+                document.getElementById('mascotaNombre').value = m.nombre;
+                document.getElementById('mascotaEspecie').value = m.especie;
+                document.getElementById('mascotaRaza').value = m.raza || '';
+                document.getElementById('mascotaSexo').value = m.sexo;
+                document.getElementById('mascotaPeso').value = m.peso || '';
+                document.getElementById('mascotaNacimiento').value = m.fecha_nacimiento || '';
+                document.getElementById('mascotaObs').value = m.observaciones || '';
+            }
+        }
+        new bootstrap.Modal(document.getElementById('modalMascota')).show();
+    }
+
+    async function saveMascota(e) {
+        e.preventDefault();
+        const id = document.getElementById('mascotaId').value;
+        const tutorId = parseInt(document.getElementById('mascotaTutor').value) || selectedTutorId;
+
+        if (!tutorId) {
+            toast('Debe seleccionar el tutor o dueño de la mascota', 'warning');
+            return false;
+        }
+
+        const body = {
+            tutor: tutorId,
+            nombre: document.getElementById('mascotaNombre').value,
+            especie: document.getElementById('mascotaEspecie').value,
+            raza: document.getElementById('mascotaRaza').value,
+            sexo: document.getElementById('mascotaSexo').value,
+            peso: document.getElementById('mascotaPeso').value || null,
+            fecha_nacimiento: document.getElementById('mascotaNacimiento').value || null,
+            observaciones: document.getElementById('mascotaObs').value,
+        };
+        try {
+            if (id) await apiFetch(API + `/mascotas/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+            else await apiFetch(API + '/mascotas/', { method: 'POST', body: JSON.stringify(body) });
+            bootstrap.Modal.getInstance(document.getElementById('modalMascota')).hide();
+            toast(id ? 'Mascota actualizada' : 'Nueva mascota registrada con éxito');
+            if (selectedTutorId) loadMascotasByTutor(selectedTutorId);
+            loadTutores(); loadDropdowns(); loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('. ') : 'Error al guardar';
+            toast(msgs, 'danger');
+        }
+        return false;
+    }
+
+    function deleteMascota(id, name) {
+        confirm(`¿Eliminar a la mascota "${name}"?`, async () => {
+            try {
+                await apiFetch(API + `/mascotas/${id}/`, { method: 'DELETE' });
+                toast('Mascota eliminada');
+                if (selectedTutorId) loadMascotasByTutor(selectedTutorId);
+                loadDropdowns(); loadStats();
+            } catch (e) { toast('Error al eliminar', 'danger'); }
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  MÓDULO 2: CALENDARIO Y AGENDAMIENTO
+    // ═══════════════════════════════════════════════════════════════════
+    async function checkDisponibilidad() {
+        const vetId = document.getElementById('selVetDisp').value;
+        const fecha = document.getElementById('fechaDisp').value;
+        if (!vetId || !fecha) { toast('Seleccione veterinario y fecha', 'warning'); return; }
+        try {
+            const d = await apiFetch(API + `/veterinarios/${vetId}/disponibilidad/?fecha=${fecha}`);
+            const grid = document.getElementById('gridDisponibilidad');
+            let html = `<p class="small text-muted mb-2">Jornada: <strong>${d.jornada.inicio} — ${d.jornada.fin}</strong></p>`;
+            html += '<div class="d-flex flex-wrap gap-1">';
+            d.bloques.forEach(b => {
+                const cls = b.estado === 'disponible' ? 'slot-disponible' : 'slot-ocupado';
+                html += `<div class="slot ${cls}" onclick="${b.estado === 'disponible' ? `fillCitaSlot('${fecha}','${b.hora_inicio}','${b.hora_fin}','${vetId}')` : ''}"
+                          title="${b.estado === 'ocupado' ? 'Ocupado' : 'Click para agendar en este bloque'}">${b.hora_inicio}</div>`;
+            });
+            html += '</div>';
+            html += '<p class="small text-muted mt-2"><span class="slot slot-disponible d-inline px-2">Disponible</span> <span class="slot slot-ocupado d-inline px-2 ms-1">Ocupado</span></p>';
+            grid.innerHTML = html;
+        } catch (e) { toast('Error al consultar disponibilidad', 'danger'); }
+    }
+
+    function fillCitaSlot(fecha, hi, hf, vetId) {
+        document.getElementById('citaFecha').value = fecha;
+        document.getElementById('citaHoraInicio').value = hi;
+        document.getElementById('citaHoraFin').value = hf;
+        document.getElementById('citaVet').value = vetId;
+        document.getElementById('citaId').value = '';
+        toast('Bloque seleccionado — complete la mascota y confirme la cita', 'info');
+    }
+
+    async function saveCita(e) {
+        e.preventDefault();
+        const id = document.getElementById('citaId').value;
+        const body = {
+            mascota: parseInt(document.getElementById('citaMascota').value),
+            veterinario: parseInt(document.getElementById('citaVet').value),
+            fecha: document.getElementById('citaFecha').value,
+            hora_inicio: document.getElementById('citaHoraInicio').value,
+            hora_fin: document.getElementById('citaHoraFin').value,
+            motivo: document.getElementById('citaMotivo').value,
+            estado: 'Pendiente',
+        };
+        const alertDiv = document.getElementById('alertCita');
+        alertDiv.innerHTML = '';
+        try {
+            if (id) await apiFetch(API + `/citas/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+            else await apiFetch(API + '/citas/', { method: 'POST', body: JSON.stringify(body) });
+            toast(id ? 'Cita actualizada' : 'Cita agendada exitosamente');
+            document.getElementById('formCita').reset();
+            document.getElementById('citaId').value = '';
+            checkSetDefaultDate();
+            loadCitas(); loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('<br>') : 'Error al guardar la cita';
+            alertDiv.innerHTML = `<div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle-fill"></i> ${msgs}</div>`;
+        }
+        return false;
+    }
+
+    async function loadCitas() {
+        const filtro = document.getElementById('filtroCitaEstado').value;
+        let url = API + '/citas/?ordering=-fecha,hora_inicio&page_size=100';
+        if (filtro) url += `&estado=${filtro}`;
+        try {
+            const data = await apiFetch(url);
+            const citas = data.results || data;
+            const tbody = document.getElementById('tableCitas');
+            if (citas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin citas registradas</td></tr>';
+                return;
+            }
+            tbody.innerHTML = citas.map(c => {
+                let acciones = '';
+                if (c.estado === 'Pendiente') {
+                    acciones = `<button class="btn btn-sm btn-outline-primary me-1" title="Confirmar" onclick="cambiarEstadoCita(${c.id},'Confirmada')"><i class="bi bi-check-lg"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" title="Cancelar" onclick="cambiarEstadoCita(${c.id},'Cancelada')"><i class="bi bi-x-lg"></i></button>`;
+                } else if (c.estado === 'Confirmada') {
+                    acciones = `<button class="btn btn-sm btn-outline-success me-1" title="Atender" onclick="cambiarEstadoCita(${c.id},'Atendida')"><i class="bi bi-clipboard-check"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" title="Cancelar" onclick="cambiarEstadoCita(${c.id},'Cancelada')"><i class="bi bi-x-lg"></i></button>`;
+                }
+                return `<tr>
+                <td>${formatDate(c.fecha)}</td>
+                <td>${c.hora_inicio.slice(0, 5)} — ${c.hora_fin.slice(0, 5)}</td>
+                <td class="fw-semibold">${c.mascota_nombre}</td>
+                <td>${c.tutor_nombre || ''}</td>
+                <td>${c.veterinario_nombre}</td>
+                <td class="small">${(c.motivo || '').substring(0, 50)}${c.motivo && c.motivo.length > 50 ? '…' : ''}</td>
+                <td>${estadoBadge(c.estado)}</td>
+                <td>${acciones}</td></tr>`;
+            }).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function cambiarEstadoCita(id, nuevoEstado) {
+        try {
+            await apiFetch(API + `/citas/${id}/`, { method: 'PATCH', body: JSON.stringify({ estado: nuevoEstado }) });
+            toast(`Cita marcada como ${nuevoEstado}`);
+            loadCitas(); loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('. ') : 'Error';
+            toast(msgs, 'danger');
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  MÓDULO 3: FICHA CLÍNICA DIGITAL
+    // ═══════════════════════════════════════════════════════════════════
+    async function buscarMascotaFicha() {
+        const q = document.getElementById('searchMascotaFicha').value;
+        if (q.length < 1) { document.getElementById('listaMascotasFicha').innerHTML = ''; return; }
+        try {
+            const data = await apiFetch(API + `/mascotas/?search=${encodeURIComponent(q)}&page_size=20`);
+            const mascotas = data.results || data;
+            document.getElementById('listaMascotasFicha').innerHTML = mascotas.map(m =>
+                `<a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                onclick="event.preventDefault();selectMascotaFicha(${m.id},'${m.nombre.replace(/'/g, "\\'")}')">
+                <div><strong>${m.nombre}</strong> <small class="text-muted">(${m.especie} - ${m.raza || 'Sin raza'})</small></div>
+                <small class="text-muted">${m.tutor_nombre}</small>
+            </a>`
+            ).join('') || '<p class="text-muted small text-center py-2">Sin resultados</p>';
+        } catch (e) { console.error(e); }
+    }
+
+    async function selectMascotaFicha(id, name) {
+        selectedMascotaFichaId = id;
+        document.getElementById('btnNuevaFicha').style.display = '';
+        document.getElementById('fichaMascota').value = id;
+        try {
+            const data = await apiFetch(API + `/mascotas/${id}/historial/`);
+            const panel = document.getElementById('panelHistorial');
+            let html = `<div class="alert bg-pc-light border-0 mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div><h5 class="mb-1 text-pc">${data.nombre}</h5>
+                <small class="text-muted">${data.especie} — ${data.raza || 'Sin raza'} | ${data.sexo === 'M' ? 'Macho' : 'Hembra'} | ${data.peso ? data.peso + ' kg' : '—'}</small></div>
+                <div class="text-end"><small class="text-muted">Tutor: <strong>${data.tutor_nombre}</strong></small></div>
+            </div></div>`;
+
+            // Fichas clínicas
+            html += '<h6 class="text-pc mt-3 mb-2"><i class="bi bi-file-earmark-medical"></i> Atenciones Clínicas Realizadas</h6>';
+            if (data.fichas_clinicas.length === 0) {
+                html += '<p class="text-muted small">Sin atenciones registradas para esta mascota.</p>';
+            } else {
+                data.fichas_clinicas.forEach(f => {
+                    html += `<div class="card border mb-2">
+                    <div class="card-header bg-white py-2 d-flex justify-content-between small">
+                        <span><i class="bi bi-calendar3"></i> ${formatDate(f.fecha_atencion)}</span>
+                        <span class="text-muted">Dr(a). ${f.veterinario_nombre}</span>
+                    </div>
+                    <div class="card-body py-2 small">
+                        ${f.diagnostico ? `<p class="mb-1"><strong>Diagnóstico:</strong> ${f.diagnostico}</p>` : ''}
+                        ${f.anamnesis ? `<p class="mb-1"><strong>Anamnesis:</strong> ${f.anamnesis}</p>` : ''}
+                        ${f.tratamiento ? `<p class="mb-1"><strong>Tratamiento:</strong> ${f.tratamiento}</p>` : ''}
+                        ${f.receta_medica ? `<p class="mb-1"><strong>Receta Médica:</strong> <em>${f.receta_medica}</em></p>` : ''}
+                        ${f.examenes_solicitados ? `<p class="mb-1"><strong>Exámenes:</strong> ${f.examenes_solicitados}</p>` : ''}
+                        ${f.resultados_examenes ? `<p class="mb-0"><strong>Resultados:</strong> ${f.resultados_examenes}</p>` : ''}
+                    </div></div>`;
+                });
+            }
+
+            // Vacunas
+            html += '<h6 class="text-pc mt-3 mb-2"><i class="bi bi-shield-plus"></i> Registro Histórico de Vacunas</h6>';
+            if (data.recordatorios_vacuna.length === 0) {
+                html += '<p class="text-muted small">Sin vacunas ni controles registrados.</p>';
+            } else {
+                html += '<div class="table-responsive"><table class="table table-sm small mb-0"><thead><tr><th></th><th>Vacuna / Control</th><th>Fecha Programada</th><th>Fecha Aplicada</th><th>Estado</th></tr></thead><tbody>';
+                data.recordatorios_vacuna.forEach(r => {
+                    const sem = r.estado_calculado === 'Vencida' ? 'semaforo-rojo' :
+                        r.estado_calculado === 'Próxima a vencer' ? 'semaforo-amarillo' :
+                            r.estado_calculado === 'Aplicada' ? 'semaforo-verde' : 'semaforo-gris';
+                    html += `<tr><td><span class="semaforo ${sem}"></span></td>
+                    <td>${r.nombre}</td><td>${formatDate(r.fecha_programada)}</td>
+                    <td>${formatDate(r.fecha_aplicacion)}</td><td>${r.estado_calculado}</td></tr>`;
+                });
+                html += '</tbody></table></div>';
+            }
+            panel.innerHTML = html;
+        } catch (e) { console.error(e); toast('Error al cargar historial clínico', 'danger'); }
+    }
+
+    function openFichaModal() {
+        document.getElementById('formFicha').reset();
+        if (selectedMascotaFichaId) document.getElementById('fichaMascota').value = selectedMascotaFichaId;
+        new bootstrap.Modal(document.getElementById('modalFicha')).show();
+    }
+
+    async function saveFicha(e) {
+        e.preventDefault();
+        const body = {
+            mascota: parseInt(document.getElementById('fichaMascota').value),
+            veterinario: parseInt(document.getElementById('fichaVet').value),
+            anamnesis: document.getElementById('fichaAnamnesis').value,
+            diagnostico: document.getElementById('fichaDiagnostico').value,
+            tratamiento: document.getElementById('fichaTratamiento').value,
+            receta_medica: document.getElementById('fichaReceta').value,
+            examenes_solicitados: document.getElementById('fichaExamSol').value,
+            resultados_examenes: document.getElementById('fichaExamRes').value,
+            costo_atencion: parseInt(document.getElementById('fichaCosto').value) || 25000,
+            pagado: true,
+        };
+        try {
+            await apiFetch(API + '/fichas-clinicas/', { method: 'POST', body: JSON.stringify(body) });
+            bootstrap.Modal.getInstance(document.getElementById('modalFicha')).hide();
+            toast('Ficha clínica guardada con éxito');
+            if (selectedMascotaFichaId) selectMascotaFicha(selectedMascotaFichaId, '');
+            loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('. ') : 'Error al guardar';
+            toast(msgs, 'danger');
+        }
+        return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  MÓDULO 4: RECORDATORIOS DE VACUNACIÓN
+    // ═══════════════════════════════════════════════════════════════════
+    async function loadRecordatorios() {
+        const filtro = document.getElementById('filtroVacEstado').value;
+        const tbody = document.getElementById('tableVacunas');
+        const resumen = document.getElementById('resumenAlertas');
+        try {
+            let items = [];
+            if (filtro === 'alertas') {
+                const data = await apiFetch(API + '/recordatorios-vacuna/alertas/');
+                items = [...(data.vencidos || []), ...(data.proximos_a_vencer || []), ...(data.pendientes || [])];
+                resumen.style.setProperty('display', 'flex', 'important');
+                resumen.innerHTML = `<span class="badge badge-vencida"><i class="bi bi-exclamation-circle"></i> ${data.resumen.vencidos} vencidos</span>
+                <span class="badge badge-proxima"><i class="bi bi-clock"></i> ${data.resumen.proximos_a_vencer} próximos</span>
+                <span class="badge badge-pendiente">${data.resumen.pendientes} pendientes</span>`;
+            } else {
+                let url = API + '/recordatorios-vacuna/?page_size=100&ordering=fecha_programada';
+                if (filtro) url += `&estado=${filtro}`;
+                const data = await apiFetch(url);
+                items = data.results || data;
+                resumen.style.setProperty('display', 'none', 'important');
+            }
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin registros de vacunas</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map(r => {
+                const sem = r.estado_calculado === 'Vencida' ? 'semaforo-rojo' :
+                    r.estado_calculado === 'Próxima a vencer' ? 'semaforo-amarillo' :
+                        r.estado_calculado === 'Aplicada' ? 'semaforo-verde' : 'semaforo-gris';
+                const acciones = r.estado_calculado !== 'Aplicada'
+                    ? `<button class="btn btn-sm btn-outline-success" title="Marcar como aplicada" onclick="marcarAplicada(${r.id})"><i class="bi bi-check-circle"></i> Aplicar</button>`
+                    : '<span class="text-success small fw-semibold"><i class="bi bi-check-circle-fill"></i> Aplicada</span>';
+                return `<tr>
+                <td><span class="semaforo ${sem}"></span></td>
+                <td class="fw-semibold">${r.nombre}</td>
+                <td><span class="badge ${r.tipo === 'Vacuna' ? 'bg-info' : 'bg-secondary'}">${r.tipo}</span></td>
+                <td>${r.mascota_nombre}</td>
+                <td>${formatDate(r.fecha_programada)}</td>
+                <td>${formatDate(r.fecha_aplicacion)}</td>
+                <td>${r.estado_calculado}</td>
+                <td>${acciones}</td></tr>`;
+            }).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function marcarAplicada(id) {
+        const hoy = new Date().toISOString().split('T')[0];
+        try {
+            await apiFetch(API + `/recordatorios-vacuna/${id}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ fecha_aplicacion: hoy, estado: 'Aplicada' })
+            });
+            toast('Vacuna / control marcado como aplicado exitosamente');
+            loadRecordatorios(); loadStats();
+        } catch (e) { toast('Error al actualizar recordatorio', 'danger'); }
+    }
+
+    function openRecordatorioModal() {
+        document.getElementById('formRecordatorio').reset();
+        new bootstrap.Modal(document.getElementById('modalRecordatorio')).show();
+    }
+
+    async function saveRecordatorio(e) {
+        e.preventDefault();
+        const body = {
+            mascota: parseInt(document.getElementById('recMascota').value),
+            tipo: document.getElementById('recTipo').value,
+            nombre: document.getElementById('recNombre').value,
+            fecha_programada: document.getElementById('recFecha').value,
+            estado: 'Pendiente',
+            notas: document.getElementById('recNotas').value,
+        };
+        try {
+            await apiFetch(API + '/recordatorios-vacuna/', { method: 'POST', body: JSON.stringify(body) });
+            bootstrap.Modal.getInstance(document.getElementById('modalRecordatorio')).hide();
+            toast('Recordatorio registrado');
+            loadRecordatorios(); loadStats();
+        } catch (err) {
+            const msgs = err.data ? Object.values(err.data).flat().join('. ') : 'Error al guardar';
+            toast(msgs, 'danger');
+        }
+        return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  INICIALIZACIÓN Y NAVEGACIÓN
+    // ═══════════════════════════════════════════════════════════════════
+    function onTabActivated(tab) {
+        if (tab === 'dashboard') loadStats();
+        if (tab === 'tutores') loadTutores();
+        if (tab === 'veterinarios') loadVeterinarios();
+        if (tab === 'citas') { loadCitas(); checkSetDefaultDate(); }
+        if (tab === 'vacunas') loadRecordatorios();
+    }
+
+    function checkSetDefaultDate() {
+        const el = document.getElementById('fechaDisp');
+        if (el && !el.value) el.value = new Date().toISOString().split('T')[0];
+        const el2 = document.getElementById('citaFecha');
+        if (el2 && !el2.value) el2.value = new Date().toISOString().split('T')[0];
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadDropdowns();
+        loadStats();
+        loadTutores();
+    });
+</script>
+{% endblock %}
